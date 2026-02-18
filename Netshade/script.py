@@ -11,22 +11,24 @@ from PyQt6.QtWidgets import (
     QTabWidget, QLabel, QPushButton, QLineEdit, QTextEdit, QComboBox,
     QTreeWidget, QTreeWidgetItem, QFileDialog, QFrame, QSplitter,
     QProgressBar, QScrollArea, QGridLayout, QGroupBox, QHeaderView,
-    QSizePolicy, QSpacerItem, QCheckBox, QSpinBox
+    QSizePolicy, QSpacerItem, QCheckBox, QSpinBox, QMenu
 )
 from PyQt6.QtCore import (
     Qt, QThread, pyqtSignal, QTimer, QPropertyAnimation,
-    QEasingCurve, QRect, QPoint, QSize, pyqtProperty
+    QEasingCurve, QRect, QPoint, QSize
 )
 from PyQt6.QtGui import (
     QFont, QColor, QPalette, QPixmap, QPainter, QLinearGradient,
-    QBrush, QPen, QFontDatabase, QIcon, QKeySequence,
-    QRadialGradient, QConicalGradient, QMovie
+    QBrush, QPen, QFontDatabase, QIcon,
+    QRadialGradient
 )
-from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 import math
 import random
 
 
+# ---------------------------------------------------------------------------
+# Theme palette (Catppuccin Mocha)
+# ---------------------------------------------------------------------------
 PALETTE = {
     "base":        "#1e1e2e",
     "mantle":      "#181825",
@@ -58,26 +60,10 @@ PALETTE = {
 CAPTURED_DIR = Path("captured")
 CAPTURED_DIR.mkdir(exist_ok=True)
 
-OUI_MAP = {
-    "00:50:f2": "Microsoft", "00:0c:e7": "Apple", "00:17:f2": "Apple",
-    "ac:de:48": "Apple", "f8:ff:c2": "Apple", "00:1a:11": "Google",
-    "94:65:9c": "Samsung", "00:23:76": "Samsung", "78:52:1a": "Samsung",
-    "8c:71:f8": "Samsung", "b0:72:bf": "OnePlus", "14:ab:c5": "OnePlus",
-    "94:87:e0": "Xiaomi", "f8:a2:d6": "Xiaomi", "50:64:2b": "Xiaomi",
-    "00:26:b9": "Sony", "30:17:c8": "Sony", "10:68:3f": "Huawei",
-    "48:00:31": "Huawei", "00:1c:bf": "Realtek", "00:0f:b5": "Netgear",
-    "c8:3a:35": "Tenda", "18:a6:f7": "TP-Link", "f4:f2:6d": "TP-Link",
-    "00:1d:0f": "Asus", "04:92:26": "Asus", "b8:27:eb": "Raspberry Pi",
-    "dc:a6:32": "Raspberry Pi", "e4:5f:01": "Raspberry Pi",
-}
 
-def oui_lookup(mac):
-    if not mac:
-        return "Unknown Device"
-    prefix = mac[:8].lower()
-    return OUI_MAP.get(prefix, "Unknown Device")
-
-
+# ---------------------------------------------------------------------------
+# Stylesheet
+# ---------------------------------------------------------------------------
 STYLESHEET = f"""
 QMainWindow, QWidget {{
     background-color: {PALETTE['base']};
@@ -127,6 +113,11 @@ QPushButton:hover {{
 }}
 QPushButton:pressed {{
     background: {PALETTE['surface2']};
+}}
+QPushButton:disabled {{
+    background: {PALETTE['surface0']};
+    color: {PALETTE['overlay0']};
+    border-color: {PALETTE['surface0']};
 }}
 QPushButton#primary {{
     background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {PALETTE['mauve']},stop:1 {PALETTE['blue']});
@@ -230,11 +221,6 @@ QTreeWidget::item:selected {{
 QTreeWidget::item:hover {{
     background: {PALETTE['surface0']};
 }}
-QTreeWidget::branch:has-children:!has-siblings:closed,
-QTreeWidget::branch:closed:has-children:has-siblings {{
-    border-image: none;
-    image: none;
-}}
 QHeaderView::section {{
     background: {PALETTE['mantle']};
     color: {PALETTE['subtext0']};
@@ -258,9 +244,7 @@ QScrollBar::handle:vertical {{
 QScrollBar::handle:vertical:hover {{
     background: {PALETTE['mauve']};
 }}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-    height: 0;
-}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar:horizontal {{
     background: {PALETTE['mantle']};
     height: 8px;
@@ -274,9 +258,7 @@ QScrollBar::handle:horizontal {{
 QScrollBar::handle:horizontal:hover {{
     background: {PALETTE['mauve']};
 }}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-    width: 0;
-}}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 QGroupBox {{
     border: 1px solid {PALETTE['surface0']};
     border-radius: 8px;
@@ -355,6 +337,9 @@ QProgressBar::chunk {{
 """
 
 
+# ---------------------------------------------------------------------------
+# Animated banner
+# ---------------------------------------------------------------------------
 class AnimatedBanner(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -366,44 +351,39 @@ class AnimatedBanner(QWidget):
         self._init_particles()
         self._init_sakura()
         self._init_stars()
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._animate)
-        self.timer.start(30)
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._animate)
+        self._timer.start(30)
+
+    def closeEvent(self, event):
+        self._timer.stop()
+        super().closeEvent(event)
 
     def _init_particles(self):
+        colors = [PALETTE["mauve"], PALETTE["blue"], PALETTE["lavender"], PALETTE["pink"], PALETTE["sapphire"]]
         for _ in range(22):
             self.particles.append({
-                "x": random.uniform(0, 1),
-                "y": random.uniform(0, 1),
-                "vx": random.uniform(-0.0008, 0.0008),
-                "vy": random.uniform(-0.0004, 0.0004),
-                "r": random.uniform(1.5, 4.0),
-                "alpha": random.uniform(0.3, 0.9),
-                "color": random.choice([
-                    PALETTE["mauve"], PALETTE["blue"], PALETTE["lavender"],
-                    PALETTE["pink"], PALETTE["sapphire"]
-                ])
+                "x": random.uniform(0, 1), "y": random.uniform(0, 1),
+                "vx": random.uniform(-0.0008, 0.0008), "vy": random.uniform(-0.0004, 0.0004),
+                "r": random.uniform(1.5, 4.0), "alpha": random.uniform(0.3, 0.9),
+                "color": random.choice(colors)
             })
 
     def _init_sakura(self):
+        colors = [PALETTE["pink"], PALETTE["flamingo"], PALETTE["rosewater"], PALETTE["mauve"]]
         for _ in range(14):
             self.sakura.append({
-                "x": random.uniform(0, 1),
-                "y": random.uniform(-0.1, 1.1),
-                "vx": random.uniform(-0.0003, 0.0003),
-                "vy": random.uniform(0.0005, 0.0018),
-                "angle": random.uniform(0, 360),
-                "spin": random.uniform(-2, 2),
-                "size": random.uniform(6, 13),
-                "alpha": random.uniform(0.5, 0.95),
-                "color": random.choice([PALETTE["pink"], PALETTE["flamingo"], PALETTE["rosewater"], PALETTE["mauve"]])
+                "x": random.uniform(0, 1), "y": random.uniform(-0.1, 1.1),
+                "vx": random.uniform(-0.0003, 0.0003), "vy": random.uniform(0.0005, 0.0018),
+                "angle": random.uniform(0, 360), "spin": random.uniform(-2, 2),
+                "size": random.uniform(6, 13), "alpha": random.uniform(0.5, 0.95),
+                "color": random.choice(colors)
             })
 
     def _init_stars(self):
         for _ in range(35):
             self.stars.append({
-                "x": random.uniform(0, 1),
-                "y": random.uniform(0, 1),
+                "x": random.uniform(0, 1), "y": random.uniform(0, 1),
                 "r": random.uniform(0.5, 1.8),
                 "phase": random.uniform(0, math.pi * 2),
                 "speed": random.uniform(0.03, 0.09),
@@ -411,16 +391,9 @@ class AnimatedBanner(QWidget):
 
     def _animate(self):
         self.wave_offset += 0.025
-        w, h = self.width(), self.height()
-
         for p in self.particles:
-            p["x"] += p["vx"]
-            p["y"] += p["vy"]
-            if p["x"] < 0: p["x"] = 1.0
-            if p["x"] > 1: p["x"] = 0.0
-            if p["y"] < 0: p["y"] = 1.0
-            if p["y"] > 1: p["y"] = 0.0
-
+            p["x"] = (p["x"] + p["vx"]) % 1.0
+            p["y"] = (p["y"] + p["vy"]) % 1.0
         for s in self.sakura:
             s["x"] += s["vx"] + 0.0003 * math.sin(self.wave_offset + s["y"] * 5)
             s["y"] += s["vy"]
@@ -428,12 +401,9 @@ class AnimatedBanner(QWidget):
             if s["y"] > 1.1:
                 s["y"] = -0.05
                 s["x"] = random.uniform(0, 1)
-            if s["x"] < 0: s["x"] = 1.0
-            if s["x"] > 1: s["x"] = 0.0
-
+            s["x"] %= 1.0
         for st in self.stars:
             st["phase"] += st["speed"]
-
         self.update()
 
     def _draw_sakura_petal(self, painter, cx, cy, size, angle, color):
@@ -471,28 +441,28 @@ class AnimatedBanner(QWidget):
             c.setAlpha(alpha)
             painter.setBrush(QBrush(c))
             painter.setPen(Qt.PenStyle.NoPen)
-            r = st["r"] * (0.7 + 0.3 * math.sin(st["phase"] * 1.3))
-            painter.drawEllipse(QPoint(int(st["x"] * w), int(st["y"] * h)), max(1, int(r)), max(1, int(r)))
+            r = max(1, int(st["r"] * (0.7 + 0.3 * math.sin(st["phase"] * 1.3))))
+            painter.drawEllipse(QPoint(int(st["x"] * w), int(st["y"] * h)), r, r)
 
+        # Wave lines
+        wave_colors = [PALETTE["mauve"], PALETTE["blue"], PALETTE["sapphire"], PALETTE["lavender"]]
         for i in range(4):
-            pts_x = [j * w / 80 for j in range(81)]
             amp = 10 + i * 4
             freq = 0.04 + i * 0.015
             phase = self.wave_offset * (0.7 + i * 0.3) + i * math.pi / 3
-            colors = [PALETTE["mauve"], PALETTE["blue"], PALETTE["sapphire"], PALETTE["lavender"]]
-            c = QColor(colors[i % len(colors)])
+            c = QColor(wave_colors[i % len(wave_colors)])
             c.setAlpha(25 + i * 8)
-            pen = QPen(c, 1.5)
-            painter.setPen(pen)
+            painter.setPen(QPen(c, 1.5))
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            prev_x = int(pts_x[0])
-            prev_y = int(h * 0.6 + amp * math.sin(freq * pts_x[0] + phase))
-            for j in range(1, len(pts_x)):
-                nx = int(pts_x[j])
-                ny = int(h * 0.6 + amp * math.sin(freq * pts_x[j] + phase))
+            prev_x = 0
+            prev_y = int(h * 0.6 + amp * math.sin(freq * 0 + phase))
+            for j in range(1, 81):
+                nx = int(j * w / 80)
+                ny = int(h * 0.6 + amp * math.sin(freq * nx + phase))
                 painter.drawLine(prev_x, prev_y, nx, ny)
                 prev_x, prev_y = nx, ny
 
+        # Particles + connections
         for p in self.particles:
             c = QColor(p["color"])
             c.setAlpha(int(p["alpha"] * 200))
@@ -503,14 +473,6 @@ class AnimatedBanner(QWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(QPoint(int(p["x"] * w), int(p["y"] * h)), int(p["r"] * 4), int(p["r"] * 4))
 
-        for s in self.sakura:
-            painter.save()
-            painter.setOpacity(s["alpha"])
-            self._draw_sakura_petal(painter, s["x"] * w, s["y"] * h, s["size"], s["angle"], s["color"])
-            painter.restore()
-
-        connection_pen = QPen(QColor(180, 180, 255, 20), 0.5)
-        painter.setPen(connection_pen)
         for i, p1 in enumerate(self.particles):
             for j, p2 in enumerate(self.particles):
                 if i >= j:
@@ -519,22 +481,26 @@ class AnimatedBanner(QWidget):
                 dy = (p1["y"] - p2["y"]) * h
                 dist = math.sqrt(dx * dx + dy * dy)
                 if dist < 90:
-                    alpha = int(30 * (1 - dist / 90))
                     c = QColor(PALETTE["mauve"])
-                    c.setAlpha(alpha)
+                    c.setAlpha(int(30 * (1 - dist / 90)))
                     painter.setPen(QPen(c, 0.5))
-                    painter.drawLine(
-                        int(p1["x"] * w), int(p1["y"] * h),
-                        int(p2["x"] * w), int(p2["y"] * h)
-                    )
+                    painter.drawLine(int(p1["x"] * w), int(p1["y"] * h), int(p2["x"] * w), int(p2["y"] * h))
 
+        # Sakura
+        for s in self.sakura:
+            painter.save()
+            painter.setOpacity(s["alpha"])
+            self._draw_sakura_petal(painter, s["x"] * w, s["y"] * h, s["size"], s["angle"], s["color"])
+            painter.restore()
+
+        # Bottom fade overlay
         overlay = QLinearGradient(0, 0, 0, h)
         overlay.setColorAt(0, QColor(0, 0, 0, 0))
         overlay.setColorAt(1, QColor(PALETTE["base"]))
         painter.fillRect(0, 0, w, h, QBrush(overlay))
 
-        title_font = QFont("JetBrains Mono", 28, QFont.Weight.Bold)
-        painter.setFont(title_font)
+        # Title text
+        painter.setFont(QFont("JetBrains Mono", 28, QFont.Weight.Bold))
         gtext = QLinearGradient(0, 0, w, 0)
         gtext.setColorAt(0.0, QColor(PALETTE["mauve"]))
         gtext.setColorAt(0.4, QColor(PALETTE["lavender"]))
@@ -543,14 +509,12 @@ class AnimatedBanner(QWidget):
         painter.setPen(QPen(QBrush(gtext), 1))
         painter.drawText(QRect(0, 38, w, 60), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, "NetShade")
 
-        sub_font = QFont("JetBrains Mono", 11)
-        painter.setFont(sub_font)
+        painter.setFont(QFont("JetBrains Mono", 11))
         painter.setPen(QColor(PALETTE["subtext0"]))
         painter.drawText(QRect(0, 95, w, 30), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "Wi-Fi Security Testing Framework")
 
-        dev_font = QFont("JetBrains Mono", 9)
-        painter.setFont(dev_font)
+        painter.setFont(QFont("JetBrains Mono", 9))
         painter.setPen(QColor(PALETTE["overlay0"]))
         painter.drawText(QRect(0, 125, w, 24), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                          "Developed by Rupen Maharjan")
@@ -560,38 +524,60 @@ class AnimatedBanner(QWidget):
         painter.end()
 
 
+# ---------------------------------------------------------------------------
+# Console output widget with buffered appends
+# ---------------------------------------------------------------------------
 class ConsoleOutput(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setReadOnly(True)
         self.document().setMaximumBlockCount(2000)
+        self._buffer = []
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._flush_buffer)
+        self._timer.start(100)
+        self._last_flush = time.time()
 
-    def append_line(self, text, color=None):
+    def closeEvent(self, event):
+        self._timer.stop()
+        super().closeEvent(event)
+
+    def _flush_buffer(self):
+        if not self._buffer:
+            return
         self.moveCursor(self.textCursor().MoveOperation.End)
-        ts = time.strftime("%H:%M:%S")
-        if color is None:
-            color = PALETTE["green"]
-        prompt = f'<span style="color:{PALETTE["overlay0"]};">[{ts}]</span>'
-        content = f'<span style="color:{color};">{text}</span>'
-        self.insertHtml(f'{prompt} {content}<br>')
+        batch, self._buffer = self._buffer[:50], self._buffer[50:]
+        self.insertHtml("".join(batch))
         self.ensureCursorVisible()
 
-    def append_success(self, text):
-        self.append_line(f"✓ {text}", PALETTE["green"])
+    def _enqueue(self, html_line):
+        self._buffer.append(html_line)
+        now = time.time()
+        if now - self._last_flush > 0.5 or len(self._buffer) > 100:
+            self._flush_buffer()
+            self._last_flush = now
 
-    def append_error(self, text):
-        self.append_line(f"✗ {text}", PALETTE["red"])
+    def append_line(self, text, color=None):
+        color = color or PALETTE["green"]
+        ts = time.strftime("%H:%M:%S")
+        prompt = f'<span style="color:{PALETTE["overlay0"]};">[{ts}]</span>'
+        content = f'<span style="color:{color};">{text}</span>'
+        self._enqueue(f'{prompt} {content}<br>')
 
-    def append_warn(self, text):
-        self.append_line(f"⚠ {text}", PALETTE["yellow"])
+    def append_success(self, text): self.append_line(f"✓ {text}", PALETTE["green"])
+    def append_error(self, text):   self.append_line(f"✗ {text}", PALETTE["red"])
+    def append_warn(self, text):    self.append_line(f"⚠ {text}", PALETTE["yellow"])
+    def append_info(self, text):    self.append_line(f"ℹ {text}", PALETTE["blue"])
+    def append_raw(self, text):     self.append_line(text, PALETTE["subtext1"])
 
-    def append_info(self, text):
-        self.append_line(f"ℹ {text}", PALETTE["blue"])
-
-    def append_raw(self, text):
-        self.append_line(text, PALETTE["subtext1"])
+    def clear_log(self):
+        self.clear()
+        self._buffer.clear()
 
 
+# ---------------------------------------------------------------------------
+# Generic worker thread for subprocess commands
+# ---------------------------------------------------------------------------
 class WorkerThread(QThread):
     output = pyqtSignal(str, str)
     finished = pyqtSignal(int)
@@ -634,21 +620,74 @@ class WorkerThread(QThread):
                     pass
 
 
-def detect_interface():
+# ---------------------------------------------------------------------------
+# Helper: wireless interface detection
+# ---------------------------------------------------------------------------
+def get_all_wireless_ifaces():
+    ifaces = []
     try:
-        result = subprocess.run(["iwconfig"], capture_output=True, text=True)
-        lines = result.stdout + result.stderr
-        ifaces = re.findall(r'^(\w+)\s+IEEE', lines, re.MULTILINE)
-        for iface in ifaces:
-            if "mon" in iface:
-                return iface, "wlan0mon"
-        if ifaces:
-            return ifaces[0], ifaces[0]
-        return "wlan0", "wlan0"
+        result = subprocess.run(["iw", "dev"], capture_output=True, text=True, timeout=5)
+        for line in result.stdout.splitlines():
+            m = re.match(r'\s+Interface\s+(\S+)', line)
+            if m:
+                ifaces.append(m.group(1))
     except Exception:
-        return "wlan0", "wlan0"
+        pass
+    if not ifaces:
+        try:
+            result = subprocess.run(["iwconfig"], capture_output=True, text=True, timeout=5)
+            ifaces = re.findall(r'^(\w+)\s+IEEE', result.stdout + result.stderr, re.MULTILINE)
+        except Exception:
+            pass
+    if not ifaces:
+        try:
+            with open("/proc/net/wireless") as f:
+                for line in f.readlines()[2:]:
+                    iface = line.split(":")[0].strip()
+                    if iface:
+                        ifaces.append(iface)
+        except Exception:
+            pass
+    return ifaces or ["wlan0"]
 
 
+def get_iface_mode(iface):
+    try:
+        result = subprocess.run(["iw", "dev", iface, "info"], capture_output=True, text=True, timeout=5)
+        m = re.search(r'type\s+(\S+)', result.stdout)
+        if m:
+            return m.group(1).lower()
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(["iwconfig", iface], capture_output=True, text=True, timeout=5)
+        output = result.stdout + result.stderr
+        if re.search(r'Mode\s*:\s*Monitor', output, re.IGNORECASE):
+            return "monitor"
+        if re.search(r'Mode\s*:\s*Managed', output, re.IGNORECASE):
+            return "managed"
+    except Exception:
+        pass
+    return "unknown"
+
+
+def detect_interface():
+    ifaces = get_all_wireless_ifaces()
+    managed = monitor = None
+    for iface in ifaces:
+        mode = get_iface_mode(iface)
+        if mode == "monitor" and monitor is None:
+            monitor = iface
+        elif mode in ("managed", "unknown") and managed is None:
+            managed = iface
+    base = managed or monitor or "wlan0"
+    mon = monitor or (base + "mon")
+    return base, mon
+
+
+# ---------------------------------------------------------------------------
+# Status bar
+# ---------------------------------------------------------------------------
 class StatusBar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -674,40 +713,40 @@ class StatusBar(QFrame):
         self.status_text = QLabel("Ready")
         self.status_text.setStyleSheet(f"color:{PALETTE['subtext0']};font-size:11px;")
 
-        layout.addWidget(self.iface_label)
-        layout.addWidget(self.mode_badge)
-        layout.addWidget(self.target_label)
+        for w in [self.iface_label, self.mode_badge, self.target_label]:
+            layout.addWidget(w)
         layout.addItem(spacer)
         layout.addWidget(self.status_dot)
         layout.addWidget(self.status_text)
 
+    def _refresh_badge_style(self, badge):
+        badge.style().unpolish(badge)
+        badge.style().polish(badge)
+
     def update_interface(self, iface, mode):
         self.iface_label.setText(f"Interface: {iface}")
-        if "mon" in mode.lower():
+        if mode == "monitor":
             self.mode_badge.setObjectName("badge_red")
             self.mode_badge.setText("MONITOR")
         else:
             self.mode_badge.setObjectName("badge_blue")
             self.mode_badge.setText("MANAGED")
-        self.mode_badge.style().unpolish(self.mode_badge)
-        self.mode_badge.style().polish(self.mode_badge)
+        self._refresh_badge_style(self.mode_badge)
 
     def set_target(self, ssid, bssid):
-        if ssid:
-            self.target_label.setText(f"Target: {ssid}  [{bssid}]")
-        else:
-            self.target_label.setText("Target: —")
+        self.target_label.setText(f"Target: {ssid}  [{bssid}]" if ssid else "Target: —")
 
     def set_status(self, text, color=None):
         self.status_text.setText(text)
-        if color:
-            self.status_dot.setStyleSheet(f"color:{color};font-size:14px;")
-            self.status_text.setStyleSheet(f"color:{color};font-size:11px;")
-        else:
-            self.status_dot.setStyleSheet(f"color:{PALETTE['green']};font-size:14px;")
-            self.status_text.setStyleSheet(f"color:{PALETTE['subtext0']};font-size:11px;")
+        dot_color = color or PALETTE["green"]
+        text_color = color or PALETTE["subtext0"]
+        self.status_dot.setStyleSheet(f"color:{dot_color};font-size:14px;")
+        self.status_text.setStyleSheet(f"color:{text_color};font-size:11px;")
 
 
+# ---------------------------------------------------------------------------
+# Wi-Fi Card Control tab
+# ---------------------------------------------------------------------------
 class WifiCardTab(QWidget):
     mode_changed = pyqtSignal(str, str)
 
@@ -729,43 +768,40 @@ class WifiCardTab(QWidget):
         header.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
         layout.addWidget(header)
 
-        sep = QFrame()
-        sep.setObjectName("separator")
+        sep = QFrame(); sep.setObjectName("separator")
         layout.addWidget(sep)
 
-        card = QFrame()
-        card.setObjectName("card")
-        card_layout = QGridLayout(card)
-        card_layout.setContentsMargins(22, 20, 22, 20)
-        card_layout.setSpacing(14)
+        card = QFrame(); card.setObjectName("card")
+        grid = QGridLayout(card)
+        grid.setContentsMargins(22, 20, 22, 20)
+        grid.setSpacing(14)
 
-        card_layout.addWidget(QLabel("Interface:"), 0, 0)
+        grid.addWidget(QLabel("Interface:"), 0, 0)
         self.iface_combo = QComboBox()
         self._populate_interfaces()
-        card_layout.addWidget(self.iface_combo, 0, 1)
+        grid.addWidget(self.iface_combo, 0, 1)
 
-        card_layout.addWidget(QLabel("Current Mode:"), 1, 0)
+        grid.addWidget(QLabel("Current Mode:"), 1, 0)
         self.mode_label = QLabel("—")
         self.mode_label.setStyleSheet(f"color:{PALETTE['sapphire']};font-weight:700;")
-        card_layout.addWidget(self.mode_label, 1, 1)
+        grid.addWidget(self.mode_label, 1, 1)
 
-        card_layout.addWidget(QLabel("Monitor Interface:"), 2, 0)
+        grid.addWidget(QLabel("Monitor Interface:"), 2, 0)
         self.mon_label = QLabel("—")
         self.mon_label.setStyleSheet(f"color:{PALETTE['mauve']};font-weight:700;")
-        card_layout.addWidget(self.mon_label, 2, 1)
+        grid.addWidget(self.mon_label, 2, 1)
 
-        card_layout.addWidget(QLabel("Driver:"), 3, 0)
+        grid.addWidget(QLabel("Driver:"), 3, 0)
         self.driver_label = QLabel("—")
         self.driver_label.setStyleSheet(f"color:{PALETTE['subtext0']};")
-        card_layout.addWidget(self.driver_label, 3, 1)
+        grid.addWidget(self.driver_label, 3, 1)
 
         layout.addWidget(card)
 
         btn_row = QHBoxLayout()
         self.toggle_btn = QPushButton("Enable Monitor Mode")
         self.toggle_btn.setObjectName("primary")
-        self.toggle_btn.setMinimumHeight(42)
-        self.toggle_btn.setMinimumWidth(200)
+        self.toggle_btn.setMinimumHeight(42); self.toggle_btn.setMinimumWidth(200)
         self.toggle_btn.clicked.connect(self._toggle_monitor)
 
         self.kill_btn = QPushButton("Kill Interfering Processes")
@@ -777,9 +813,8 @@ class WifiCardTab(QWidget):
         self.refresh_btn.setMinimumHeight(42)
         self.refresh_btn.clicked.connect(self._refresh_state)
 
-        btn_row.addWidget(self.toggle_btn)
-        btn_row.addWidget(self.kill_btn)
-        btn_row.addWidget(self.refresh_btn)
+        for b in [self.toggle_btn, self.kill_btn, self.refresh_btn]:
+            btn_row.addWidget(b)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
@@ -789,71 +824,89 @@ class WifiCardTab(QWidget):
         layout.addStretch()
 
     def _populate_interfaces(self):
+        prev = self.iface_combo.currentData()
         self.iface_combo.clear()
-        try:
-            result = subprocess.run(["iwconfig"], capture_output=True, text=True)
-            lines = result.stdout + result.stderr
-            ifaces = re.findall(r'^(\w+)\s+IEEE', lines, re.MULTILINE)
-            for iface in ifaces:
-                self.iface_combo.addItem(iface)
-            if not ifaces:
-                self.iface_combo.addItem("wlan0")
-        except Exception:
-            self.iface_combo.addItem("wlan0")
+        for iface in get_all_wireless_ifaces():
+            mode = get_iface_mode(iface)
+            self.iface_combo.addItem(f"{iface}  [{mode}]", iface)
+        if self.iface_combo.count() == 0:
+            self.iface_combo.addItem("wlan0  [unknown]", "wlan0")
+        # Restore previous selection
+        for i in range(self.iface_combo.count()):
+            if self.iface_combo.itemData(i) == prev:
+                self.iface_combo.setCurrentIndex(i)
+                break
 
     def _get_current_iface(self):
-        return self.iface_combo.currentText() or "wlan0"
+        data = self.iface_combo.currentData()
+        if data:
+            return data
+        text = self.iface_combo.currentText()
+        return text.split()[0] if text else "wlan0"
 
     def _refresh_state(self):
+        self._populate_interfaces()
         iface = self._get_current_iface()
         try:
-            result = subprocess.run(["iwconfig", iface], capture_output=True, text=True)
-            output = result.stdout + result.stderr
-            if "Monitor" in output:
-                mode = "Monitor"
-                self.mode_label.setText("Monitor Mode")
+            mode = get_iface_mode(iface)
+            all_ifaces = get_all_wireless_ifaces()
+
+            if mode == "monitor":
+                self.mode_label.setText("Monitor Mode  🔴")
                 self.mode_label.setStyleSheet(f"color:{PALETTE['red']};font-weight:700;")
                 self.toggle_btn.setText("Disable Monitor Mode")
                 self.toggle_btn.setObjectName("danger")
+                self.mon_label.setText(iface)
+                self.mon_label.setStyleSheet(f"color:{PALETTE['red']};font-weight:700;")
+                emit_mon = iface
             else:
-                mode = "Managed"
-                self.mode_label.setText("Managed Mode")
+                self.mode_label.setText("Managed Mode  🟢")
                 self.mode_label.setStyleSheet(f"color:{PALETTE['green']};font-weight:700;")
                 self.toggle_btn.setText("Enable Monitor Mode")
                 self.toggle_btn.setObjectName("primary")
+                mon_iface = next((i for i in all_ifaces if get_iface_mode(i) == "monitor"), None)
+                if mon_iface:
+                    self.mon_label.setText(mon_iface)
+                    self.mon_label.setStyleSheet(f"color:{PALETTE['mauve']};font-weight:700;")
+                    emit_mon = mon_iface
+                else:
+                    self.mon_label.setText("None")
+                    self.mon_label.setStyleSheet(f"color:{PALETTE['overlay0']};font-weight:700;")
+                    emit_mon = iface
+
             self.toggle_btn.style().unpolish(self.toggle_btn)
             self.toggle_btn.style().polish(self.toggle_btn)
 
-            mon = iface + "mon" if "mon" not in iface else iface
-            mon_result = subprocess.run(["iwconfig", mon], capture_output=True, text=True)
-            if mon in (mon_result.stdout + mon_result.stderr) and "Monitor" in (mon_result.stdout + mon_result.stderr):
-                self.mon_label.setText(mon)
-            else:
-                self.mon_label.setText("None")
-
-            driver_result = subprocess.run(["ethtool", "-i", iface], capture_output=True, text=True)
-            driver_match = re.search(r'driver:\s+(\S+)', driver_result.stdout)
-            self.driver_label.setText(driver_match.group(1) if driver_match else "Unknown")
+            # Driver info
+            try:
+                dr = subprocess.run(["ethtool", "-i", iface], capture_output=True, text=True, timeout=5)
+                m = re.search(r'driver:\s+(\S+)', dr.stdout)
+                self.driver_label.setText(m.group(1) if m else "Unknown")
+            except Exception:
+                self.driver_label.setText("Unknown")
 
             self.status_bar.update_interface(iface, mode)
-            self.mode_changed.emit(iface, mon if "None" not in self.mon_label.text() else iface)
+            self.mode_changed.emit(iface, emit_mon)
+            self.console.append_info(f"Interface: {iface} | Mode: {mode} | Monitor: {self.mon_label.text()}")
         except Exception as e:
             self.console.append_error(f"Could not read interface state: {e}")
 
     def _toggle_monitor(self):
         iface = self._get_current_iface()
         if "Enable" in self.toggle_btn.text():
-            self.console.append_info(f"Starting monitor mode on {iface}...")
-            self.status_bar.set_status("Enabling monitor mode...", PALETTE["yellow"])
+            self.console.append_info(f"Starting monitor mode on {iface}…")
+            self.status_bar.set_status("Enabling monitor mode…", PALETTE["yellow"])
             self._run_cmd(["sudo", "airmon-ng", "start", iface])
         else:
-            self.console.append_info(f"Stopping monitor mode on {iface}...")
-            self.status_bar.set_status("Disabling monitor mode...", PALETTE["yellow"])
-            mon = iface + "mon" if "mon" not in iface else iface
-            self._run_cmd(["sudo", "airmon-ng", "stop", mon])
+            self.console.append_info("Stopping monitor mode…")
+            self.status_bar.set_status("Disabling monitor mode…", PALETTE["yellow"])
+            all_ifaces = get_all_wireless_ifaces()
+            mon_iface = next((i for i in all_ifaces if get_iface_mode(i) == "monitor"), None)
+            target = mon_iface or (iface + "mon")
+            self._run_cmd(["sudo", "airmon-ng", "stop", target])
 
     def _kill_processes(self):
-        self.console.append_warn("Killing interfering processes (NetworkManager, wpa_supplicant)...")
+        self.console.append_warn("Killing interfering processes…")
         self._run_cmd(["sudo", "airmon-ng", "check", "kill"])
 
     def _run_cmd(self, cmd):
@@ -877,29 +930,42 @@ class WifiCardTab(QWidget):
         else:
             self.console.append_error(f"Command exited with code {rc}")
             self.status_bar.set_status("Error", PALETTE["red"])
-        QTimer.singleShot(500, self._refresh_state)
+        QTimer.singleShot(800, self._refresh_state)
+        QTimer.singleShot(1500, self._refresh_state)
 
 
+# ---------------------------------------------------------------------------
+# Scan thread
+# ---------------------------------------------------------------------------
 class ScanThread(QThread):
     network_found = pyqtSignal(dict)
     client_found = pyqtSignal(dict)
     raw_output = pyqtSignal(str)
 
-    def __init__(self, iface):
+    _MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
+    _CSV_PATH = "/tmp/ns_scan-01.csv"
+
+    def __init__(self, iface, band="abg"):
         super().__init__()
         self.iface = iface
+        self.band = band
         self.process = None
         self._stop = False
         self._networks = {}
         self._clients = {}
+        self._lock = threading.Lock()
 
     def run(self):
+        # Clean up old files
+        for f in [self._CSV_PATH, "/tmp/ns_scan-01.cap"]:
+            try: os.remove(f)
+            except Exception: pass
+
+        cmd = ["sudo", "airodump-ng", "--output-format", "csv",
+               "--write", "/tmp/ns_scan", "--band", self.band, self.iface]
         try:
-            self.process = subprocess.Popen(
-                ["sudo", "airodump-ng", "--output-format", "csv", "--write", "/tmp/ns_scan", self.iface],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1
-            )
+            self.process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                            stderr=subprocess.STDOUT, text=True, bufsize=1)
             csv_thread = threading.Thread(target=self._parse_csv, daemon=True)
             csv_thread.start()
             for line in iter(self.process.stdout.readline, ''):
@@ -911,83 +977,86 @@ class ScanThread(QThread):
             self.raw_output.emit(f"Error: {e}")
 
     def _parse_csv(self):
-        csv_path = "/tmp/ns_scan-01.csv"
         while not self._stop:
             time.sleep(2)
-            if not os.path.exists(csv_path):
+            if not os.path.exists(self._CSV_PATH):
                 continue
             try:
-                with open(csv_path, "r", errors="ignore") as f:
-                    content = f.read()
-                sections = content.split("\r\n\r\n")
-                if len(sections) < 1:
-                    continue
-                bss_lines = sections[0].strip().splitlines()
-                sta_lines = sections[1].strip().splitlines() if len(sections) > 1 else []
+                with open(self._CSV_PATH, "rb") as f:
+                    content = f.read().decode('utf-8', errors='ignore')
 
-                for line in bss_lines[2:]:
+                sep = '\r\n\r\n' if '\r\n\r\n' in content else '\n\n'
+                sections = content.split(sep)
+                if len(sections) < 2:
+                    continue
+
+                # Parse APs
+                for line in sections[0].splitlines()[2:]:
+                    if not line.strip():
+                        continue
                     parts = [p.strip() for p in line.split(",")]
                     if len(parts) < 14:
                         continue
                     bssid = parts[0]
-                    if not re.match(r'([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', bssid):
+                    if not self._MAC_RE.match(bssid):
                         continue
                     net = {
-                        "bssid": bssid,
-                        "channel": parts[3],
-                        "power": parts[8],
-                        "ssid": parts[13] if parts[13] else "<Hidden>",
-                        "privacy": parts[5],
-                        "clients": []
+                        "bssid": bssid, "channel": parts[3],
+                        "power": parts[8], "privacy": parts[5],
+                        "ssid": parts[13] or "<Hidden>",
                     }
-                    if bssid not in self._networks:
-                        self._networks[bssid] = net
-                        self.network_found.emit(net)
-                    else:
-                        self._networks[bssid].update(net)
-                        self.network_found.emit(net)
+                    with self._lock:
+                        if bssid not in self._networks:
+                            self._networks[bssid] = net
+                            self.network_found.emit(net)
+                        else:
+                            self._networks[bssid].update(net)
 
-                for line in sta_lines[2:]:
+                # Parse clients
+                sta_section = sections[1].strip()
+                if not sta_section:
+                    continue
+                for line in sta_section.splitlines()[2:]:
+                    if not line.strip():
+                        continue
                     parts = [p.strip() for p in line.split(",")]
                     if len(parts) < 6:
                         continue
                     sta_mac = parts[0]
-                    if not re.match(r'([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', sta_mac):
+                    ap_bssid = parts[5].strip()
+                    if (not self._MAC_RE.match(sta_mac) or not self._MAC_RE.match(ap_bssid)
+                            or "(not associated)" in ap_bssid.lower()):
                         continue
-                    ap_bssid = parts[5]
-                    sta = {
-                        "bssid": sta_mac,
-                        "ap_bssid": ap_bssid,
-                        "power": parts[3],
-                        "device": oui_lookup(sta_mac)
-                    }
-                    key = sta_mac
-                    if key not in self._clients:
-                        self._clients[key] = sta
-                        self.client_found.emit(sta)
-                    else:
-                        old = self._clients[key]
-                        if old != sta:
+                    power = parts[3] if len(parts) > 3 else "-100"
+                    sta = {"bssid": sta_mac, "ap_bssid": ap_bssid, "power": power}
+                    key = f"{sta_mac}:{ap_bssid}"
+                    with self._lock:
+                        if key not in self._clients:
                             self._clients[key] = sta
                             self.client_found.emit(sta)
-            except Exception:
-                pass
+                        elif self._clients[key]["power"] != power:
+                            self._clients[key]["power"] = power
+                            self.client_found.emit(sta)
+            except Exception as e:
+                self.raw_output.emit(f"CSV parse error: {e}")
 
     def stop(self):
         self._stop = True
         if self.process:
             try:
-                subprocess.run(["sudo", "kill", str(self.process.pid)], capture_output=True)
+                subprocess.run(["sudo", "kill", str(self.process.pid)],
+                               capture_output=True, timeout=2)
                 self.process.terminate()
             except Exception:
                 pass
-        for f in ["/tmp/ns_scan-01.csv", "/tmp/ns_scan-01.cap"]:
-            try:
-                os.remove(f)
-            except Exception:
-                pass
+        for f in [self._CSV_PATH, "/tmp/ns_scan-01.cap"]:
+            try: os.remove(f)
+            except Exception: pass
 
 
+# ---------------------------------------------------------------------------
+# Scanner tab
+# ---------------------------------------------------------------------------
 class ScanTab(QWidget):
     target_selected = pyqtSignal(str, str, str)
 
@@ -1021,12 +1090,13 @@ class ScanTab(QWidget):
         self.network_count_badge.setObjectName("badge_blue")
         self.client_count_badge = QLabel("0 Clients")
         self.client_count_badge.setObjectName("badge_green")
-        hdr.addWidget(self.network_count_badge)
-        hdr.addWidget(self.client_count_badge)
+        self.band_badge = QLabel("2.4 + 5 GHz")
+        self.band_badge.setObjectName("badge_yellow")
+        for w in [self.band_badge, self.network_count_badge, self.client_count_badge]:
+            hdr.addWidget(w)
         layout.addLayout(hdr)
 
-        sep = QFrame()
-        sep.setObjectName("separator")
+        sep = QFrame(); sep.setObjectName("separator")
         layout.addWidget(sep)
 
         ctrl = QHBoxLayout()
@@ -1037,10 +1107,18 @@ class ScanTab(QWidget):
         self.mon_iface_edit = QLineEdit("wlan0mon")
         self.mon_iface_edit.setFixedWidth(130)
 
+        band_lbl = QLabel("Band:")
+        band_lbl.setStyleSheet(f"color:{PALETTE['subtext0']};")
+        self.band_combo = QComboBox()
+        self.band_combo.addItem("2.4 GHz + 5 GHz  (abg)", "abg")
+        self.band_combo.addItem("2.4 GHz only  (bg)", "bg")
+        self.band_combo.addItem("5 GHz only  (a)", "a")
+        self.band_combo.setFixedWidth(220)
+        self.band_combo.currentIndexChanged.connect(self._on_band_change)
+
         self.scan_btn = QPushButton("▶  Start Scan")
         self.scan_btn.setObjectName("primary")
-        self.scan_btn.setMinimumHeight(38)
-        self.scan_btn.setMinimumWidth(140)
+        self.scan_btn.setMinimumHeight(38); self.scan_btn.setMinimumWidth(140)
         self.scan_btn.clicked.connect(self._toggle_scan)
 
         self.set_target_btn = QPushButton("Set as Target")
@@ -1052,27 +1130,26 @@ class ScanTab(QWidget):
         self.clear_btn.setMinimumHeight(38)
         self.clear_btn.clicked.connect(self._clear)
 
-        ctrl.addWidget(iface_lbl)
-        ctrl.addWidget(self.mon_iface_edit)
-        ctrl.addWidget(self.scan_btn)
-        ctrl.addWidget(self.set_target_btn)
-        ctrl.addWidget(self.clear_btn)
+        for w in [iface_lbl, self.mon_iface_edit, band_lbl, self.band_combo,
+                  self.scan_btn, self.set_target_btn, self.clear_btn]:
+            ctrl.addWidget(w)
         ctrl.addStretch()
         layout.addLayout(ctrl)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["#", "BSSID", "SSID / Device", "PWR", "CH", "Security", "Clients"])
+        self.tree.setHeaderLabels(["#", "BSSID", "SSID", "PWR", "CH", "Band", "Security", "Clients"])
         self.tree.setAlternatingRowColors(True)
         self.tree.setAnimated(True)
+        self.tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._show_context_menu)
         self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.tree.setColumnWidth(0, 42)
-        self.tree.setColumnWidth(1, 150)
-        self.tree.setColumnWidth(3, 60)
-        self.tree.setColumnWidth(4, 55)
-        self.tree.setColumnWidth(5, 100)
-        self.tree.setColumnWidth(6, 65)
+        self.tree.setColumnWidth(0, 42); self.tree.setColumnWidth(1, 150)
+        self.tree.setColumnWidth(3, 60); self.tree.setColumnWidth(4, 50)
+        self.tree.setColumnWidth(5, 72); self.tree.setColumnWidth(6, 100)
+        self.tree.setColumnWidth(7, 65)
         self.tree.setMinimumHeight(280)
         self.tree.itemDoubleClicked.connect(self._on_tree_click)
         splitter.addWidget(self.tree)
@@ -1080,12 +1157,24 @@ class ScanTab(QWidget):
         self.console = ConsoleOutput()
         self.console.setFixedHeight(130)
         splitter.addWidget(self.console)
-
         layout.addWidget(splitter)
 
         self.status_lbl = QLabel("Ready to scan.")
         self.status_lbl.setStyleSheet(f"color:{PALETTE['subtext0']};font-size:11px;")
         layout.addWidget(self.status_lbl)
+
+    def _on_band_change(self):
+        band_data = self.band_combo.currentData()
+        mapping = {
+            "abg": ("2.4 + 5 GHz", "badge_yellow"),
+            "a":   ("5 GHz only",   "badge_blue"),
+            "bg":  ("2.4 GHz only", "badge_green"),
+        }
+        text, obj = mapping.get(band_data, ("?", "badge_blue"))
+        self.band_badge.setText(text)
+        self.band_badge.setObjectName(obj)
+        self.band_badge.style().unpolish(self.band_badge)
+        self.band_badge.style().polish(self.band_badge)
 
     def _toggle_scan(self):
         if self.scan_thread and self.scan_thread.isRunning():
@@ -1095,54 +1184,76 @@ class ScanTab(QWidget):
 
     def _start_scan(self):
         iface = self.mon_iface_edit.text().strip() or self.mon_iface
+        band = self.band_combo.currentData() or "abg"
         self._net_counter = 0
-        self.scan_thread = ScanThread(iface)
+        self.scan_thread = ScanThread(iface, band)
         self.scan_thread.network_found.connect(self._on_network)
         self.scan_thread.client_found.connect(self._on_client)
-        self.scan_thread.raw_output.connect(lambda t: self.console.append_raw(t))
+        self.scan_thread.raw_output.connect(self.console.append_raw)
         self.scan_thread.start()
 
-        self.scan_btn.setText("■  Stop Scan")
-        self.scan_btn.setObjectName("danger")
-        self.scan_btn.style().unpolish(self.scan_btn)
-        self.scan_btn.style().polish(self.scan_btn)
-        self.status_lbl.setText(f"Scanning on {iface}…")
-        self.status_bar.set_status(f"Scanning {iface}", PALETTE["yellow"])
-        self.console.append_info(f"Scan started on {iface}")
+        self._set_scan_btn_state(scanning=True)
+        band_label = self.band_combo.currentText().split("(")[0].strip()
+        self.status_lbl.setText(f"Scanning on {iface} — {band_label}…")
+        self.status_bar.set_status(f"Scanning {iface} [{band_label}]", PALETTE["yellow"])
+        self.console.append_info(f"Scan started on {iface} | Band: {band_label}")
 
     def _stop_scan(self):
         if self.scan_thread:
             self.scan_thread.stop()
             self.scan_thread.wait()
-        self.scan_btn.setText("▶  Start Scan")
-        self.scan_btn.setObjectName("primary")
-        self.scan_btn.style().unpolish(self.scan_btn)
-        self.scan_btn.style().polish(self.scan_btn)
+        self._set_scan_btn_state(scanning=False)
         self.status_lbl.setText(f"Scan stopped. {len(self._networks)} networks found.")
         self.status_bar.set_status("Ready")
         self.console.append_info("Scan stopped.")
 
+    def _set_scan_btn_state(self, scanning: bool):
+        if scanning:
+            self.scan_btn.setText("■  Stop Scan")
+            self.scan_btn.setObjectName("danger")
+        else:
+            self.scan_btn.setText("▶  Start Scan")
+            self.scan_btn.setObjectName("primary")
+        self.scan_btn.style().unpolish(self.scan_btn)
+        self.scan_btn.style().polish(self.scan_btn)
+
+    @staticmethod
+    def _power_color(power):
+        try:
+            p = int(power)
+            if p > -50:   return QColor(PALETTE["green"])
+            if p > -70:   return QColor(PALETTE["yellow"])
+            return QColor(PALETTE["red"])
+        except Exception:
+            return QColor(PALETTE["subtext0"])
+
+    @staticmethod
+    def _channel_to_band(channel_str):
+        try:
+            return "5 GHz" if int(channel_str.strip()) > 14 else "2.4 GHz"
+        except Exception:
+            return "?"
+
     def _on_network(self, net):
         bssid = net["bssid"]
+        band = self._channel_to_band(net.get("channel", "0"))
+        net["band"] = band
+
         if bssid not in self._net_items:
             self._net_counter += 1
             net["_id"] = self._net_counter
             self._networks[bssid] = net
-            item = QTreeWidgetItem()
-            item.setText(0, str(self._net_counter))
-            item.setText(1, bssid)
-            ssid = net["ssid"] or "<Hidden>"
-            item.setText(2, ssid)
-            item.setText(3, net["power"])
-            item.setText(4, net["channel"])
-            item.setText(5, net["privacy"])
-            item.setText(6, "0")
+            item = QTreeWidgetItem([
+                str(self._net_counter), bssid,
+                net["ssid"] or "<Hidden>",
+                net["power"], net["channel"], band, net["privacy"], "0"
+            ])
             item.setData(0, Qt.ItemDataRole.UserRole, net)
             item.setForeground(1, QColor(PALETTE["blue"]))
-            item.setForeground(2, QColor(PALETTE["text"]))
             item.setForeground(3, self._power_color(net["power"]))
             item.setForeground(4, QColor(PALETTE["sapphire"]))
-            item.setForeground(5, QColor(PALETTE["peach"]))
+            item.setForeground(5, QColor(PALETTE["peach"] if band == "5 GHz" else PALETTE["teal"]))
+            item.setForeground(6, QColor(PALETTE["peach"]))
             self.tree.addTopLevelItem(item)
             self._net_items[bssid] = item
             self._update_badge()
@@ -1153,52 +1264,28 @@ class ScanTab(QWidget):
 
     def _on_client(self, sta):
         ap_bssid = sta.get("ap_bssid", "").strip()
-        sta_bssid = sta["bssid"]
-
+        sta_mac = sta["bssid"]
         parent_item = self._net_items.get(ap_bssid)
         if not parent_item:
             return
 
-        if sta_bssid in self._client_items:
-            child = self._client_items[sta_bssid]
-            child.setText(2, sta["device"])
-            child.setText(3, sta.get("power", ""))
+        if sta_mac in self._client_items:
+            self._client_items[sta_mac].setText(3, sta.get("power", ""))
         else:
-            child = QTreeWidgetItem()
-            child.setText(0, "")
-            child.setText(1, f"  └─ {sta_bssid}")
-            child.setText(2, sta["device"])
-            child.setText(3, sta.get("power", ""))
-            child.setText(4, "")
-            child.setText(5, "Client")
+            child = QTreeWidgetItem(["", f"  └─ {sta_mac}",
+                                     f"Client  [{sta_mac[:8].upper()}]",
+                                     sta.get("power", ""), "", "", "", ""])
             child.setForeground(1, QColor(PALETTE["teal"]))
-            child.setForeground(2, QColor(PALETTE["green"]))
-            child.setForeground(5, QColor(PALETTE["overlay1"]))
+            child.setForeground(2, QColor(PALETTE["overlay1"]))
+            child.setForeground(3, self._power_color(sta.get("power", "-100")))
             parent_item.addChild(child)
             parent_item.setExpanded(True)
-            parent_item.setText(6, str(parent_item.childCount()))
-            self._client_items[sta_bssid] = child
-            self._update_client_badge()
-
-    def _power_color(self, power):
-        try:
-            p = int(power)
-            if p > -50:
-                return QColor(PALETTE["green"])
-            elif p > -70:
-                return QColor(PALETTE["yellow"])
-            else:
-                return QColor(PALETTE["red"])
-        except Exception:
-            return QColor(PALETTE["subtext0"])
+            parent_item.setText(7, str(parent_item.childCount()))
+            self._client_items[sta_mac] = child
+            self.client_count_badge.setText(f"{len(self._client_items)} Clients")
 
     def _update_badge(self):
-        n = self.tree.topLevelItemCount()
-        self.network_count_badge.setText(f"{n} Networks")
-
-    def _update_client_badge(self):
-        n = len(self._client_items)
-        self.client_count_badge.setText(f"{n} Clients")
+        self.network_count_badge.setText(f"{self.tree.topLevelItemCount()} Networks")
 
     def _on_tree_click(self, item, col):
         net = item.data(0, Qt.ItemDataRole.UserRole)
@@ -1219,11 +1306,34 @@ class ScanTab(QWidget):
         else:
             self.console.append_warn("Please select a network (not a client row).")
 
+    def _show_context_menu(self, pos):
+        item = self.tree.itemAt(pos)
+        if not item:
+            return
+        menu = QMenu(self)
+        menu.setStyleSheet(f"""
+            QMenu {{ background:{PALETTE['mantle']}; color:{PALETTE['text']};
+                     border:1px solid {PALETTE['surface1']}; border-radius:6px; padding:4px; }}
+            QMenu::item {{ padding:6px 20px; border-radius:4px; }}
+            QMenu::item:selected {{ background:{PALETTE['surface0']}; color:{PALETTE['mauve']}; }}
+        """)
+        bssid = item.text(1).replace("└─ ", "").strip()
+        copy_bssid = menu.addAction("📋 Copy BSSID")
+        copy_bssid.triggered.connect(lambda: QApplication.clipboard().setText(bssid))
+        net = item.data(0, Qt.ItemDataRole.UserRole)
+        if net:
+            copy_all = menu.addAction("📋 Copy All Info")
+            copy_all.triggered.connect(lambda: QApplication.clipboard().setText(
+                f"BSSID: {net.get('bssid','')}\nSSID: {net.get('ssid','')}\n"
+                f"Channel: {net.get('channel','')}\nPower: {net.get('power','')} dBm\n"
+                f"Security: {net.get('privacy','')}"
+            ))
+            set_tgt = menu.addAction("🎯 Set as Target")
+            set_tgt.triggered.connect(self._set_target)
+        menu.exec(self.tree.viewport().mapToGlobal(pos))
+
     def get_networks(self):
-        result = []
-        for bssid, net in self._networks.items():
-            result.append(net)
-        return sorted(result, key=lambda n: n.get("_id", 0))
+        return sorted(self._networks.values(), key=lambda n: n.get("_id", 0))
 
     def _clear(self):
         self.tree.clear()
@@ -1232,25 +1342,23 @@ class ScanTab(QWidget):
         self._client_items.clear()
         self._net_counter = 0
         self._update_badge()
-        self._update_client_badge()
+        self.client_count_badge.setText("0 Clients")
         self.console.append_info("Cleared scan results.")
 
 
+# ---------------------------------------------------------------------------
+# Handshake capture tab
+# ---------------------------------------------------------------------------
 class HandshakeTab(QWidget):
     def __init__(self, status_bar, parent=None):
         super().__init__(parent)
         self.status_bar = status_bar
         self.worker = None
-        self._target_bssid = ""
-        self._target_ssid = ""
-        self._target_channel = ""
         self._networks = []
+        self._handshake_detected = False
         self._build_ui()
 
     def set_target(self, bssid, ssid, channel):
-        self._target_bssid = bssid
-        self._target_ssid = ssid
-        self._target_channel = channel
         self._refresh_combo()
         for i in range(self.wifi_combo.count()):
             if bssid in self.wifi_combo.itemText(i):
@@ -1278,45 +1386,41 @@ class HandshakeTab(QWidget):
         title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
         layout.addWidget(title)
 
-        sep = QFrame()
-        sep.setObjectName("separator")
+        sep = QFrame(); sep.setObjectName("separator")
         layout.addWidget(sep)
 
-        card = QFrame()
-        card.setObjectName("card")
-        cly = QGridLayout(card)
-        cly.setContentsMargins(22, 18, 22, 18)
-        cly.setSpacing(12)
+        card = QFrame(); card.setObjectName("card")
+        grid = QGridLayout(card)
+        grid.setContentsMargins(22, 18, 22, 18)
+        grid.setSpacing(12)
 
-        cly.addWidget(QLabel("Target Network:"), 0, 0)
+        grid.addWidget(QLabel("Target Network:"), 0, 0)
         self.wifi_combo = QComboBox()
         self.wifi_combo.setMinimumWidth(320)
-        cly.addWidget(self.wifi_combo, 0, 1, 1, 2)
+        grid.addWidget(self.wifi_combo, 0, 1, 1, 2)
 
-        cly.addWidget(QLabel("Monitor Interface:"), 1, 0)
+        grid.addWidget(QLabel("Monitor Interface:"), 1, 0)
         self.iface_edit = QLineEdit("wlan0mon")
         self.iface_edit.setFixedWidth(140)
-        cly.addWidget(self.iface_edit, 1, 1)
+        grid.addWidget(self.iface_edit, 1, 1)
 
-        cly.addWidget(QLabel("Save As:"), 2, 0)
+        grid.addWidget(QLabel("Save As:"), 2, 0)
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("handshake_name (e.g. home_wifi)")
-        cly.addWidget(self.name_edit, 2, 1, 1, 2)
+        grid.addWidget(self.name_edit, 2, 1, 1, 2)
 
-        cly.addWidget(QLabel("Save Path:"), 3, 0)
+        grid.addWidget(QLabel("Save Path:"), 3, 0)
         path_lbl = QLabel(str(CAPTURED_DIR.resolve()))
         path_lbl.setStyleSheet(f"color:{PALETTE['subtext0']};font-size:11px;")
-        cly.addWidget(path_lbl, 3, 1, 1, 2)
+        grid.addWidget(path_lbl, 3, 1, 1, 2)
 
         layout.addWidget(card)
 
         btn_row = QHBoxLayout()
         self.capture_btn = QPushButton("▶  Start Capture")
         self.capture_btn.setObjectName("primary")
-        self.capture_btn.setMinimumHeight(42)
-        self.capture_btn.setMinimumWidth(180)
+        self.capture_btn.setMinimumHeight(42); self.capture_btn.setMinimumWidth(180)
         self.capture_btn.clicked.connect(self._toggle_capture)
-
         btn_row.addWidget(self.capture_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
@@ -1340,6 +1444,7 @@ class HandshakeTab(QWidget):
             self.console.append_warn("Please enter a name for the capture.")
             return
 
+        self._handshake_detected = False
         iface = self.iface_edit.text().strip() or "wlan0mon"
         bssid = net.get("bssid", "")
         channel = net.get("channel", "")
@@ -1352,45 +1457,53 @@ class HandshakeTab(QWidget):
         self.worker.error.connect(self.console.append_error)
         self.worker.start()
 
-        self.capture_btn.setText("■  Stop Capture")
-        self.capture_btn.setObjectName("danger")
-        self.capture_btn.style().unpolish(self.capture_btn)
-        self.capture_btn.style().polish(self.capture_btn)
+        self._set_capture_btn(capturing=True)
         self.status_bar.set_status("Capturing handshake…", PALETTE["yellow"])
         self.console.append_info(f"Capturing from {net.get('ssid','')} [{bssid}] → {save_path}.*")
 
     def _handle_output(self, text, _):
         self.console.append_raw(text)
-        if "WPA handshake" in text:
+        if not self._handshake_detected and any(
+                p in text.lower() for p in ["wpa handshake", "handshake", "4-way handshake", "eapol"]):
+            self._handshake_detected = True
             self.console.append_success("🎉 Handshake captured!")
             self.status_bar.set_status("Handshake captured!", PALETTE["green"])
 
     def _stop(self):
         if self.worker:
             self.worker.stop()
-        self.capture_btn.setText("▶  Start Capture")
-        self.capture_btn.setObjectName("primary")
-        self.capture_btn.style().unpolish(self.capture_btn)
-        self.capture_btn.style().polish(self.capture_btn)
+        self._set_capture_btn(capturing=False)
         self.status_bar.set_status("Ready")
 
     def _on_done(self, rc):
-        self.capture_btn.setText("▶  Start Capture")
-        self.capture_btn.setObjectName("primary")
-        self.capture_btn.style().unpolish(self.capture_btn)
-        self.capture_btn.style().polish(self.capture_btn)
+        self._set_capture_btn(capturing=False)
         self.status_bar.set_status("Ready")
 
+    def _set_capture_btn(self, capturing: bool):
+        if capturing:
+            self.capture_btn.setText("■  Stop Capture")
+            self.capture_btn.setObjectName("danger")
+        else:
+            self.capture_btn.setText("▶  Start Capture")
+            self.capture_btn.setObjectName("primary")
+        self.capture_btn.style().unpolish(self.capture_btn)
+        self.capture_btn.style().polish(self.capture_btn)
 
+
+# ---------------------------------------------------------------------------
+# Attack thread (throttled output)
+# ---------------------------------------------------------------------------
 class AttackThread(QThread):
     output = pyqtSignal(str, str)
     finished = pyqtSignal(int)
+    error = pyqtSignal(str)
 
     def __init__(self, cmd):
         super().__init__()
         self.cmd = cmd
         self.process = None
         self._stop = False
+        self._line_count = 0
 
     def run(self):
         try:
@@ -1401,238 +1514,202 @@ class AttackThread(QThread):
             for line in iter(self.process.stdout.readline, ''):
                 if self._stop:
                     break
-                if line.strip():
+                self._line_count += 1
+                # Show first 20 lines, then every 10th (reduce UI flooding)
+                if line.strip() and (self._line_count <= 20 or self._line_count % 10 == 0):
                     self.output.emit(line.rstrip(), "raw")
             self.process.wait()
             self.finished.emit(self.process.returncode)
         except Exception as e:
-            self.output.emit(f"Error: {e}", "error")
+            self.error.emit(str(e))
 
     def stop(self):
         self._stop = True
         if self.process:
             try:
-                subprocess.run(["sudo", "kill", "-9", str(self.process.pid)], capture_output=True)
+                subprocess.run(["sudo", "kill", "-9", str(self.process.pid)],
+                               capture_output=True, timeout=2)
                 self.process.terminate()
                 self.process.wait(timeout=2)
             except Exception:
-                try:
-                    self.process.kill()
-                except Exception:
-                    pass
+                try: self.process.kill()
+                except Exception: pass
 
 
-class DeauthDoSTab(QWidget):
+# ---------------------------------------------------------------------------
+# Deauth tab
+# ---------------------------------------------------------------------------
+class DeauthTab(QWidget):
     def __init__(self, status_bar, parent=None):
         super().__init__(parent)
         self.status_bar = status_bar
-        self.deauth_worker = None
-        self.dos_worker = None
+        self.worker = None
         self._target_bssid = ""
-        self._target_ssid = ""
         self._target_channel = ""
         self._build_ui()
 
     def set_target(self, bssid, ssid, channel):
         self._target_bssid = bssid
-        self._target_ssid = ssid
         self._target_channel = channel
-        self.deauth_bssid_edit.setText(bssid)
-        self.dos_bssid_edit.setText(bssid)
-        self.dos_channel_edit.setText(channel)
+        self.bssid_edit.setText(bssid)
+        self.channel_edit.setText(channel)
         self.target_info.setText(f"Target: {ssid}  [{bssid}]  CH:{channel}")
-        self.target_info.setStyleSheet(f"color:{PALETTE['green']};font-size:11px;font-weight:600;")
+        self.target_info.setStyleSheet(f"color:{PALETTE['green']};font-size:11px;font-weight:700;")
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(14)
 
-        title = QLabel("Deauthentication & DoS Attack")
+        title = QLabel("Deauthentication Attack")
         title.setObjectName("section")
         title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
         layout.addWidget(title)
 
-        sep = QFrame()
-        sep.setObjectName("separator")
+        sep = QFrame(); sep.setObjectName("separator")
         layout.addWidget(sep)
 
         self.target_info = QLabel("No target selected — use Scanner tab to set target.")
         self.target_info.setStyleSheet(f"color:{PALETTE['overlay0']};font-size:11px;")
         layout.addWidget(self.target_info)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        card = QFrame(); card.setObjectName("card")
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(22, 20, 22, 20)
+        cl.setSpacing(12)
 
-        deauth_widget = QFrame()
-        deauth_widget.setObjectName("card")
-        dl = QVBoxLayout(deauth_widget)
-        dl.setContentsMargins(18, 16, 18, 16)
-        dl.setSpacing(10)
+        info_lbl = QLabel("⚠️  Deauthentication sends disconnect packets to clients on the target AP.")
+        info_lbl.setWordWrap(True)
+        info_lbl.setStyleSheet(
+            f"color:{PALETTE['yellow']};font-size:11px;padding:10px;"
+            f"background:{PALETTE['surface0']};border-radius:6px;")
+        cl.addWidget(info_lbl)
 
-        dh = QLabel("Deauthentication")
-        dh.setFont(QFont("JetBrains Mono", 12, QFont.Weight.Bold))
-        dh.setStyleSheet(f"color:{PALETTE['peach']};")
-        dl.addWidget(dh)
+        grid = QGridLayout()
+        grid.setSpacing(10)
 
-        dg = QGridLayout()
-        dg.setSpacing(8)
+        grid.addWidget(QLabel("Target AP BSSID:"), 0, 0)
+        self.bssid_edit = QLineEdit()
+        self.bssid_edit.setPlaceholderText("Auto-filled from Scanner")
+        grid.addWidget(self.bssid_edit, 0, 1)
 
-        dg.addWidget(QLabel("AP BSSID:"), 0, 0)
-        self.deauth_bssid_edit = QLineEdit()
-        self.deauth_bssid_edit.setPlaceholderText("Auto-filled from target")
-        dg.addWidget(self.deauth_bssid_edit, 0, 1)
+        grid.addWidget(QLabel("Channel:"), 1, 0)
+        self.channel_edit = QLineEdit()
+        self.channel_edit.setPlaceholderText("Auto-filled")
+        self.channel_edit.setFixedWidth(80)
+        grid.addWidget(self.channel_edit, 1, 1, Qt.AlignmentFlag.AlignLeft)
 
-        dg.addWidget(QLabel("Interface:"), 1, 0)
-        self.deauth_iface_edit = QLineEdit("wlan0mon")
-        dg.addWidget(self.deauth_iface_edit, 1, 1)
+        grid.addWidget(QLabel("Interface:"), 2, 0)
+        self.iface_edit = QLineEdit("wlan0mon")
+        self.iface_edit.setFixedWidth(140)
+        grid.addWidget(self.iface_edit, 2, 1, Qt.AlignmentFlag.AlignLeft)
 
-        dg.addWidget(QLabel("Target Client:"), 2, 0)
+        grid.addWidget(QLabel("Target Client:"), 3, 0)
+        hbox = QHBoxLayout()
         self.client_edit = QLineEdit()
-        self.client_edit.setPlaceholderText("Leave empty = broadcast (all clients)")
-        dg.addWidget(self.client_edit, 2, 1)
+        self.client_edit.setPlaceholderText("Empty = broadcast to all clients")
+        self.client_edit.setEnabled(False)
+        self.broadcast_check = QCheckBox("Broadcast (all clients)")
+        self.broadcast_check.setChecked(True)
+        self.broadcast_check.toggled.connect(lambda checked: self.client_edit.setEnabled(not checked))
+        hbox.addWidget(self.client_edit)
+        hbox.addWidget(self.broadcast_check)
+        grid.addLayout(hbox, 3, 1)
+        cl.addLayout(grid)
 
-        dl.addLayout(dg)
+        btn_row = QHBoxLayout()
+        self.start_btn = QPushButton("▶  Start Deauth Attack")
+        self.start_btn.setObjectName("danger")
+        self.start_btn.setMinimumHeight(42); self.start_btn.setMinimumWidth(200)
+        self.start_btn.clicked.connect(self._toggle)
+        btn_row.addWidget(self.start_btn)
+        btn_row.addStretch()
+        cl.addLayout(btn_row)
 
-        self.deauth_btn = QPushButton("▶  Start Deauth")
-        self.deauth_btn.setObjectName("danger")
-        self.deauth_btn.setMinimumHeight(40)
-        self.deauth_btn.clicked.connect(self._toggle_deauth)
-        dl.addWidget(self.deauth_btn)
+        layout.addWidget(card)
+        self.console = ConsoleOutput()
+        layout.addWidget(self.console)
 
-        self.deauth_console = ConsoleOutput()
-        dl.addWidget(self.deauth_console)
-        splitter.addWidget(deauth_widget)
+    _MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
 
-        dos_widget = QFrame()
-        dos_widget.setObjectName("card")
-        dosl = QVBoxLayout(dos_widget)
-        dosl.setContentsMargins(18, 16, 18, 16)
-        dosl.setSpacing(10)
-
-        dosh = QLabel("Wi-Fi DoS / Jamming")
-        dosh.setFont(QFont("JetBrains Mono", 12, QFont.Weight.Bold))
-        dosh.setStyleSheet(f"color:{PALETTE['red']};")
-        dosl.addWidget(dosh)
-
-        dosg = QGridLayout()
-        dosg.setSpacing(8)
-
-        dosg.addWidget(QLabel("AP BSSID:"), 0, 0)
-        self.dos_bssid_edit = QLineEdit()
-        self.dos_bssid_edit.setPlaceholderText("Auto-filled from target")
-        dosg.addWidget(self.dos_bssid_edit, 0, 1)
-
-        dosg.addWidget(QLabel("Interface:"), 1, 0)
-        self.dos_iface_edit = QLineEdit("wlan0mon")
-        dosg.addWidget(self.dos_iface_edit, 1, 1)
-
-        dosg.addWidget(QLabel("Channel:"), 2, 0)
-        self.dos_channel_edit = QLineEdit()
-        self.dos_channel_edit.setPlaceholderText("Auto-filled")
-        dosg.addWidget(self.dos_channel_edit, 2, 1)
-
-        dosl.addLayout(dosg)
-
-        self.dos_btn = QPushButton("▶  Start DoS")
-        self.dos_btn.setObjectName("danger")
-        self.dos_btn.setMinimumHeight(40)
-        self.dos_btn.clicked.connect(self._toggle_dos)
-        dosl.addWidget(self.dos_btn)
-
-        self.dos_console = ConsoleOutput()
-        dosl.addWidget(self.dos_console)
-        splitter.addWidget(dos_widget)
-
-        layout.addWidget(splitter)
-
-    def _toggle_deauth(self):
-        if self.deauth_worker and self.deauth_worker.isRunning():
-            self._stop_deauth()
+    def _toggle(self):
+        if self.worker and self.worker.isRunning():
+            self._stop()
         else:
-            self._start_deauth()
+            self._start()
 
-    def _start_deauth(self):
-        bssid = self.deauth_bssid_edit.text().strip() or self._target_bssid
-        iface = self.deauth_iface_edit.text().strip() or "wlan0mon"
-        client = self.client_edit.text().strip()
+    def _start(self):
+        bssid = self.bssid_edit.text().strip() or self._target_bssid
+        iface = self.iface_edit.text().strip() or "wlan0mon"
+        channel = self.channel_edit.text().strip() or self._target_channel
+        client = "" if self.broadcast_check.isChecked() else self.client_edit.text().strip()
 
         if not bssid:
-            self.deauth_console.append_warn("No target BSSID. Set a target in the Scanner tab.")
+            self.console.append_warn("No target BSSID. Set a target in the Scanner tab first.")
             return
-
-        if client:
-            cmd = ["sudo", "aireplay-ng", "--deauth", "0", "-a", bssid, "-c", client, iface]
-        else:
-            cmd = ["sudo", "aireplay-ng", "--deauth", "0", "-a", bssid, iface]
-
-        self.deauth_worker = AttackThread(cmd)
-        self.deauth_worker.output.connect(lambda t, _: self.deauth_console.append_raw(t))
-        self.deauth_worker.finished.connect(lambda rc: self._on_deauth_done(rc))
-        self.deauth_worker.start()
-
-        self.deauth_btn.setText("■  Stop Deauth")
-        target_desc = f"all clients" if not client else client
-        self.deauth_console.append_info(f"Deauth started → {bssid} [{target_desc}]")
-        self.status_bar.set_status("Deauthenticating…", PALETTE["red"])
-
-    def _stop_deauth(self):
-        if self.deauth_worker:
-            self.deauth_worker.stop()
-            self.deauth_worker.wait()
-        self.deauth_btn.setText("▶  Start Deauth")
-        self.deauth_console.append_warn("Deauth stopped.")
-        self.status_bar.set_status("Ready")
-
-    def _on_deauth_done(self, rc):
-        self.deauth_btn.setText("▶  Start Deauth")
-        self.status_bar.set_status("Ready")
-
-    def _toggle_dos(self):
-        if self.dos_worker and self.dos_worker.isRunning():
-            self._stop_dos()
-        else:
-            self._start_dos()
-
-    def _start_dos(self):
-        bssid = self.dos_bssid_edit.text().strip() or self._target_bssid
-        iface = self.dos_iface_edit.text().strip() or "wlan0mon"
-        channel = self.dos_channel_edit.text().strip() or self._target_channel
-
-        if not bssid:
-            self.dos_console.append_warn("No target BSSID. Set a target in the Scanner tab.")
+        if not self._MAC_RE.match(bssid):
+            self.console.append_error("Invalid BSSID format. Must be XX:XX:XX:XX:XX:XX")
+            return
+        if client and not self._MAC_RE.match(client):
+            self.console.append_error("Invalid client BSSID format.")
             return
 
         if channel:
-            subprocess.run(["sudo", "iwconfig", iface, "channel", channel], capture_output=True)
+            try:
+                subprocess.run(["sudo", "iwconfig", iface, "channel", channel],
+                               capture_output=True, check=False, timeout=2)
+            except Exception:
+                pass
 
-        cmd = ["sudo", "aireplay-ng", "--deauth", "0", "-a", bssid, iface]
-        self.dos_worker = AttackThread(cmd)
-        self.dos_worker.output.connect(lambda t, _: self.dos_console.append_raw(t))
-        self.dos_worker.finished.connect(lambda rc: self._on_dos_done(rc))
-        self.dos_worker.start()
+        cmd = ["sudo", "aireplay-ng", "--deauth", "0", "-a", bssid]
+        target_desc = f"client {client}" if client else "all clients (broadcast)"
+        if client:
+            cmd += ["-c", client]
+        cmd.append(iface)
 
-        self.dos_btn.setText("■  Stop DoS")
-        self.dos_console.append_info(f"DoS/Jamming started → {bssid} on CH{channel}")
-        self.status_bar.set_status("DoS active — jamming target…", PALETTE["red"])
+        self.worker = AttackThread(cmd)
+        self.worker.output.connect(lambda t, _: self.console.append_raw(t))
+        self.worker.finished.connect(self._on_done)
+        self.worker.error.connect(self.console.append_error)
+        self.worker.start()
 
-    def _stop_dos(self):
-        if self.dos_worker:
-            self.dos_worker.stop()
-            self.dos_worker.wait()
-        self.dos_btn.setText("▶  Start DoS")
-        self.dos_console.append_warn("DoS stopped.")
+        self._set_btn_state(running=True)
+        self.console.append_info(f"Deauth attack started → {bssid} targeting {target_desc}")
+        self.status_bar.set_status(f"Deauth active [{target_desc}]", PALETTE["red"])
+
+    def _stop(self):
+        if self.worker:
+            self.worker.stop()
+            self.worker.wait()
+        self._set_btn_state(running=False)
+        self.console.append_warn("Deauth attack stopped.")
         self.status_bar.set_status("Ready")
 
-    def _on_dos_done(self, rc):
-        self.dos_btn.setText("▶  Start DoS")
+    def _on_done(self, rc):
+        self._set_btn_state(running=False)
         self.status_bar.set_status("Ready")
+        if rc != 0:
+            self.console.append_error(f"Deauth process exited with code {rc}")
+
+    def _set_btn_state(self, running: bool):
+        if running:
+            self.start_btn.setText("■  Stop Attack")
+            self.start_btn.setObjectName("warning")
+        else:
+            self.start_btn.setText("▶  Start Deauth Attack")
+            self.start_btn.setObjectName("danger")
+        self.start_btn.style().unpolish(self.start_btn)
+        self.start_btn.style().polish(self.start_btn)
 
 
+# ---------------------------------------------------------------------------
+# Crack & Convert tab  ← UNIFIED: one file picker, three actions
+# ---------------------------------------------------------------------------
 class CrackConvertTab(QWidget):
     def __init__(self, status_bar, parent=None):
         super().__init__(parent)
         self.status_bar = status_bar
-        self.worker = None
+        self.crack_worker = None
         self._build_ui()
 
     def _build_ui(self):
@@ -1645,241 +1722,234 @@ class CrackConvertTab(QWidget):
         title.setFont(QFont("JetBrains Mono", 15, QFont.Weight.Bold))
         layout.addWidget(title)
 
-        sep = QFrame()
-        sep.setObjectName("separator")
+        sep = QFrame(); sep.setObjectName("separator")
         layout.addWidget(sep)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        # ── Single file selection card ──────────────────────────────────────
+        file_card = QFrame(); file_card.setObjectName("card")
+        fg = QGridLayout(file_card)
+        fg.setContentsMargins(22, 18, 22, 18)
+        fg.setSpacing(12)
 
-        crack_widget = QFrame()
-        crack_widget.setObjectName("card")
-        cl = QVBoxLayout(crack_widget)
-        cl.setContentsMargins(18, 16, 18, 16)
-        cl.setSpacing(10)
-
-        ch = QLabel("Aircrack-ng Password Cracker")
-        ch.setFont(QFont("JetBrains Mono", 12, QFont.Weight.Bold))
-        ch.setStyleSheet(f"color:{PALETTE['mauve']};")
-        cl.addWidget(ch)
-
-        cg = QGridLayout()
-        cg.setSpacing(8)
-
-        cg.addWidget(QLabel(".cap File:"), 0, 0)
+        fg.addWidget(QLabel(".cap / .pcap File:"), 0, 0)
         cap_row = QHBoxLayout()
         self.cap_edit = QLineEdit()
         self.cap_edit.setPlaceholderText("/path/to/capture.cap")
         self.cap_browse = QPushButton("Browse")
-        self.cap_browse.setFixedWidth(70)
-        self.cap_browse.clicked.connect(lambda: self._browse(self.cap_edit, "cap Files (*.cap *.pcap)"))
+        self.cap_browse.setFixedWidth(80)
+        self.cap_browse.clicked.connect(self._browse_cap)
         cap_row.addWidget(self.cap_edit)
         cap_row.addWidget(self.cap_browse)
-        cg.addLayout(cap_row, 0, 1)
+        fg.addLayout(cap_row, 0, 1)
 
-        cg.addWidget(QLabel("Wordlist:"), 1, 0)
+        fg.addWidget(QLabel("Wordlist (for crack):"), 1, 0)
         wl_row = QHBoxLayout()
         self.wl_edit = QLineEdit("/usr/share/wordlists/rockyou.txt")
         self.wl_browse = QPushButton("Browse")
-        self.wl_browse.setFixedWidth(70)
-        self.wl_browse.clicked.connect(lambda: self._browse(self.wl_edit, "Text Files (*.txt);;All (*)"))
+        self.wl_browse.setFixedWidth(80)
+        self.wl_browse.clicked.connect(self._browse_wordlist)
         wl_row.addWidget(self.wl_edit)
         wl_row.addWidget(self.wl_browse)
-        cg.addLayout(wl_row, 1, 1)
+        fg.addLayout(wl_row, 1, 1)
 
-        cl.addLayout(cg)
-
-        crack_btn_row = QHBoxLayout()
-        self.crack_btn = QPushButton("▶  Start Cracking")
-        self.crack_btn.setObjectName("primary")
-        self.crack_btn.setMinimumHeight(40)
-        self.crack_btn.clicked.connect(self._toggle_crack)
-
-        self.stop_crack_btn = QPushButton("■  Stop")
-        self.stop_crack_btn.setObjectName("danger")
-        self.stop_crack_btn.setMinimumHeight(40)
-        self.stop_crack_btn.setEnabled(False)
-        self.stop_crack_btn.clicked.connect(self._stop_crack)
-
-        crack_btn_row.addWidget(self.crack_btn)
-        crack_btn_row.addWidget(self.stop_crack_btn)
-        crack_btn_row.addStretch()
-        cl.addLayout(crack_btn_row)
-
-        self.crack_console = ConsoleOutput()
-        cl.addWidget(self.crack_console)
-        splitter.addWidget(crack_widget)
-
-        conv_widget = QFrame()
-        conv_widget.setObjectName("card")
-        cvl = QVBoxLayout(conv_widget)
-        cvl.setContentsMargins(18, 16, 18, 16)
-        cvl.setSpacing(10)
-
-        cvh = QLabel("File Conversion")
-        cvh.setFont(QFont("JetBrains Mono", 12, QFont.Weight.Bold))
-        cvh.setStyleSheet(f"color:{PALETTE['sapphire']};")
-        cvl.addWidget(cvh)
-
-        cvg = QGridLayout()
-        cvg.setSpacing(8)
-
-        cvg.addWidget(QLabel(".cap File:"), 0, 0)
-        conv_cap_row = QHBoxLayout()
-        self.conv_cap_edit = QLineEdit()
-        self.conv_cap_edit.setPlaceholderText("/path/to/handshake.cap")
-        self.conv_cap_browse = QPushButton("Browse")
-        self.conv_cap_browse.setFixedWidth(70)
-        self.conv_cap_browse.clicked.connect(lambda: self._browse(self.conv_cap_edit, "cap Files (*.cap *.pcap)"))
-        conv_cap_row.addWidget(self.conv_cap_edit)
-        conv_cap_row.addWidget(self.conv_cap_browse)
-        cvg.addLayout(conv_cap_row, 0, 1)
-
-        cvg.addWidget(QLabel("Output Dir:"), 1, 0)
+        fg.addWidget(QLabel("Output Directory:"), 2, 0)
         out_row = QHBoxLayout()
         self.out_dir_edit = QLineEdit(str(CAPTURED_DIR.resolve()))
         self.out_dir_browse = QPushButton("Browse")
-        self.out_dir_browse.setFixedWidth(70)
-        self.out_dir_browse.clicked.connect(self._browse_dir)
+        self.out_dir_browse.setFixedWidth(80)
+        self.out_dir_browse.clicked.connect(self._browse_output_dir)
         out_row.addWidget(self.out_dir_edit)
         out_row.addWidget(self.out_dir_browse)
-        cvg.addLayout(out_row, 1, 1)
-        cvl.addLayout(cvg)
+        fg.addLayout(out_row, 2, 1)
 
-        conv_btn_row = QHBoxLayout()
+        layout.addWidget(file_card)
 
-        hc_btn = QPushButton("→ Hashcat (.hc22000)")
-        hc_btn.setObjectName("warning")
-        hc_btn.setMinimumHeight(40)
-        hc_btn.clicked.connect(self._to_hashcat)
+        # ── Action buttons ──────────────────────────────────────────────────
+        action_card = QFrame(); action_card.setObjectName("card")
+        al = QVBoxLayout(action_card)
+        al.setContentsMargins(22, 16, 22, 16)
+        al.setSpacing(10)
 
-        jtr_btn = QPushButton("→ John the Ripper (.hccap)")
-        jtr_btn.setObjectName("success")
-        jtr_btn.setMinimumHeight(40)
-        jtr_btn.clicked.connect(self._to_john)
+        action_hdr = QLabel("Select an Action")
+        action_hdr.setStyleSheet(f"color:{PALETTE['subtext0']};font-size:11px;font-weight:600;")
+        al.addWidget(action_hdr)
 
-        conv_btn_row.addWidget(hc_btn)
-        conv_btn_row.addWidget(jtr_btn)
-        cvl.addLayout(conv_btn_row)
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
 
-        self.conv_console = ConsoleOutput()
-        cvl.addWidget(self.conv_console)
-        splitter.addWidget(conv_widget)
+        self.crack_btn = QPushButton("▶  Crack Password")
+        self.crack_btn.setObjectName("primary")
+        self.crack_btn.setMinimumHeight(42)
+        self.crack_btn.setToolTip("Run aircrack-ng with the selected wordlist against this capture")
+        self.crack_btn.clicked.connect(self._toggle_crack)
 
-        layout.addWidget(splitter)
+        self.hc_btn = QPushButton("→ Export Hashcat (.hc22000)")
+        self.hc_btn.setObjectName("warning")
+        self.hc_btn.setMinimumHeight(42)
+        self.hc_btn.setToolTip("Convert capture to Hashcat WPA2 format using hcxpcapngtool")
+        self.hc_btn.clicked.connect(self._to_hashcat)
 
-    def _browse(self, edit, filt):
-        path, _ = QFileDialog.getOpenFileName(self, "Select File", str(Path.home()), filt)
+        self.jtr_btn = QPushButton("→ Export John the Ripper (.hccap)")
+        self.jtr_btn.setObjectName("success")
+        self.jtr_btn.setMinimumHeight(42)
+        self.jtr_btn.setToolTip("Convert capture to John the Ripper format using aircrack-ng -J")
+        self.jtr_btn.clicked.connect(self._to_john)
+
+        for b in [self.crack_btn, self.hc_btn, self.jtr_btn]:
+            btn_row.addWidget(b)
+        btn_row.addStretch()
+        al.addLayout(btn_row)
+
+        layout.addWidget(action_card)
+
+        # ── Console ─────────────────────────────────────────────────────────
+        self.console = ConsoleOutput()
+        layout.addWidget(self.console)
+
+    # ── File browsing ───────────────────────────────────────────────────────
+    def _browse_cap(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select .cap / .pcap File", str(Path.home()),
+            "Capture Files (*.cap *.pcap);;All Files (*)")
         if path:
-            edit.setText(path)
+            self.cap_edit.setText(path)
 
-    def _browse_dir(self):
+    def _browse_wordlist(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Wordlist", str(Path.home()),
+            "Text Files (*.txt);;All Files (*)")
+        if path:
+            self.wl_edit.setText(path)
+
+    def _browse_output_dir(self):
         d = QFileDialog.getExistingDirectory(self, "Select Output Directory", str(Path.home()))
         if d:
             self.out_dir_edit.setText(d)
 
+    # ── Validation helper ───────────────────────────────────────────────────
+    def _validate_cap(self):
+        cap = self.cap_edit.text().strip()
+        if not cap:
+            self.console.append_warn("Please specify a .cap file.")
+            return None
+        if not os.path.exists(cap):
+            self.console.append_error(f"File not found: {cap}")
+            return None
+        return cap
+
+    def _get_out_dir(self):
+        return self.out_dir_edit.text().strip() or str(CAPTURED_DIR.resolve())
+
+    # ── Crack ────────────────────────────────────────────────────────────────
     def _toggle_crack(self):
-        if self.worker and self.worker.isRunning():
+        if self.crack_worker and self.crack_worker.isRunning():
             self._stop_crack()
         else:
             self._start_crack()
 
     def _start_crack(self):
-        cap = self.cap_edit.text().strip()
-        wl = self.wl_edit.text().strip()
+        cap = self._validate_cap()
         if not cap:
-            self.crack_console.append_warn("Please specify a .cap file.")
             return
+        wl = self.wl_edit.text().strip()
         if not wl:
-            self.crack_console.append_warn("Please specify a wordlist.")
-            return
-        if not os.path.exists(cap):
-            self.crack_console.append_error(f"File not found: {cap}")
+            self.console.append_warn("Please specify a wordlist.")
             return
         if not os.path.exists(wl):
-            self.crack_console.append_error(f"Wordlist not found: {wl}")
+            self.console.append_error(f"Wordlist not found: {wl}")
             return
 
-        cmd = ["sudo", "aircrack-ng", cap, "-w", wl]
-        self.worker = WorkerThread(cmd)
-        self.worker.output.connect(self._handle_crack_output)
-        self.worker.finished.connect(self._on_crack_done)
-        self.worker.error.connect(self.crack_console.append_error)
-        self.worker.start()
+        self.crack_worker = WorkerThread(["sudo", "aircrack-ng", cap, "-w", wl])
+        self.crack_worker.output.connect(self._handle_crack_output)
+        self.crack_worker.finished.connect(self._on_crack_done)
+        self.crack_worker.error.connect(self.console.append_error)
+        self.crack_worker.start()
 
-        self.crack_btn.setEnabled(False)
-        self.stop_crack_btn.setEnabled(True)
+        self._set_crack_btn(cracking=True)
         self.status_bar.set_status("Cracking…", PALETTE["yellow"])
-        self.crack_console.append_info(f"aircrack-ng started: {cap}")
+        self.console.append_info(f"aircrack-ng started: {cap}")
 
     def _handle_crack_output(self, text, _):
         if "KEY FOUND" in text.upper():
-            self.crack_console.append_success(text)
+            self.console.append_success(text)
             self.status_bar.set_status("KEY FOUND!", PALETTE["green"])
-        elif "failed" in text.lower() or "not found" in text.lower():
-            self.crack_console.append_warn(text)
+        elif any(k in text.lower() for k in ("failed", "not found")):
+            self.console.append_warn(text)
         else:
-            self.crack_console.append_raw(text)
+            self.console.append_raw(text)
 
     def _stop_crack(self):
-        if self.worker:
-            self.worker.stop()
-        self.crack_btn.setEnabled(True)
-        self.stop_crack_btn.setEnabled(False)
+        if self.crack_worker:
+            self.crack_worker.stop()
+        self._set_crack_btn(cracking=False)
         self.status_bar.set_status("Ready")
+        self.console.append_warn("Cracking stopped.")
 
     def _on_crack_done(self, rc):
-        self.crack_btn.setEnabled(True)
-        self.stop_crack_btn.setEnabled(False)
+        self._set_crack_btn(cracking=False)
         self.status_bar.set_status("Ready")
-        if rc == 0:
-            self.crack_console.append_success("Aircrack-ng finished.")
+        msg = "Aircrack-ng finished." if rc == 0 else f"Aircrack-ng exited with code {rc}"
+        (self.console.append_success if rc == 0 else self.console.append_warn)(msg)
+
+    def _set_crack_btn(self, cracking: bool):
+        if cracking:
+            self.crack_btn.setText("■  Stop Cracking")
+            self.crack_btn.setObjectName("danger")
         else:
-            self.crack_console.append_warn(f"Aircrack-ng exited with code {rc}")
+            self.crack_btn.setText("▶  Crack Password")
+            self.crack_btn.setObjectName("primary")
+        self.crack_btn.style().unpolish(self.crack_btn)
+        self.crack_btn.style().polish(self.crack_btn)
+        self.hc_btn.setEnabled(not cracking)
+        self.jtr_btn.setEnabled(not cracking)
+
+    # ── Conversion helpers ───────────────────────────────────────────────────
+    def _run_conversion(self, cmd, expected_output, label):
+        """Runs a conversion command and reports result."""
+        w = WorkerThread(cmd)
+        w.output.connect(lambda t, _: self.console.append_raw(t))
+        w.finished.connect(lambda rc: (
+            self.console.append_success(f"{label} saved → {expected_output}")
+            if rc == 0 else
+            self.console.append_error(f"{label} conversion failed (code {rc})")
+        ))
+        w.error.connect(self.console.append_error)
+        w.start()
 
     def _to_hashcat(self):
-        cap = self.conv_cap_edit.text().strip()
-        out_dir = self.out_dir_edit.text().strip() or str(CAPTURED_DIR.resolve())
+        cap = self._validate_cap()
         if not cap:
-            self.conv_console.append_warn("Please specify a .cap file.")
             return
-        if not os.path.exists(cap):
-            self.conv_console.append_error(f"File not found: {cap}")
-            return
+        out_dir = self._get_out_dir()
         stem = Path(cap).stem
         out = os.path.join(out_dir, stem + ".hc22000")
-        if shutil.which("hcxtools") or shutil.which("cap2hashcat") or shutil.which("hcxpcapngtool"):
-            tool = "hcxpcapngtool"
-            cmd = ["sudo", tool, "-o", out, cap]
+
+        if shutil.which("hcxpcapngtool"):
+            cmd = ["sudo", "hcxpcapngtool", "-o", out, cap]
         else:
+            self.console.append_warn("hcxpcapngtool not found; using aircrack-ng fallback (limited compatibility).")
             cmd = ["sudo", "aircrack-ng", cap, "-J", os.path.join(out_dir, stem)]
-            self.conv_console.append_warn("hcxpcapngtool not found, using aircrack-ng fallback.")
-        w = WorkerThread(cmd)
-        w.output.connect(lambda t, _: self.conv_console.append_raw(t))
-        w.finished.connect(lambda rc: self.conv_console.append_success(f"Hashcat file saved → {out}") if rc == 0 else self.conv_console.append_error(f"Conversion failed (code {rc})"))
-        w.error.connect(self.conv_console.append_error)
-        w.start()
-        self.conv_console.append_info(f"Converting to Hashcat format → {out}")
+
+        self.console.append_info(f"Converting to Hashcat format → {out}")
+        self._run_conversion(cmd, out, "Hashcat file")
 
     def _to_john(self):
-        cap = self.conv_cap_edit.text().strip()
-        out_dir = self.out_dir_edit.text().strip() or str(CAPTURED_DIR.resolve())
+        cap = self._validate_cap()
         if not cap:
-            self.conv_console.append_warn("Please specify a .cap file.")
             return
-        if not os.path.exists(cap):
-            self.conv_console.append_error(f"File not found: {cap}")
-            return
+        out_dir = self._get_out_dir()
         stem = Path(cap).stem
-        out = os.path.join(out_dir, stem)
-        cmd = ["sudo", "aircrack-ng", cap, "-J", out]
-        w = WorkerThread(cmd)
-        w.output.connect(lambda t, _: self.conv_console.append_raw(t))
-        w.finished.connect(lambda rc: self.conv_console.append_success(f"John file saved → {out}.hccap") if rc == 0 else self.conv_console.append_error(f"Conversion failed (code {rc})"))
-        w.error.connect(self.conv_console.append_error)
-        w.start()
-        self.conv_console.append_info(f"Converting to John the Ripper format → {out}.hccap")
+        out_base = os.path.join(out_dir, stem)
+        out = out_base + ".hccap"
+
+        cmd = ["sudo", "aircrack-ng", cap, "-J", out_base]
+        self.console.append_info(f"Converting to John the Ripper format → {out}")
+        self._run_conversion(cmd, out, "John the Ripper file")
 
 
+# ---------------------------------------------------------------------------
+# Main window
+# ---------------------------------------------------------------------------
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1887,6 +1957,12 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1100, 780)
         self.resize(1280, 860)
         self._build_ui()
+        self._set_pointer_cursors()
+
+    def _set_pointer_cursors(self):
+        for cls in (QPushButton, QComboBox):
+            for widget in self.findChildren(cls):
+                widget.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def _build_ui(self):
         central = QWidget()
@@ -1899,40 +1975,39 @@ class MainWindow(QMainWindow):
         root.addWidget(self.banner)
 
         content = QWidget()
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(16, 10, 16, 10)
-        content_layout.setSpacing(10)
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(16, 10, 16, 10)
+        cl.setSpacing(10)
 
         self.status_bar_widget = StatusBar()
-        content_layout.addWidget(self.status_bar_widget)
+        cl.addWidget(self.status_bar_widget)
 
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
 
-        self.card_tab = WifiCardTab(self.status_bar_widget)
-        self.scan_tab = ScanTab(self.status_bar_widget)
-        self.hs_tab = HandshakeTab(self.status_bar_widget)
-        self.attack_tab = DeauthDoSTab(self.status_bar_widget)
-        self.crack_tab = CrackConvertTab(self.status_bar_widget)
+        self.card_tab   = WifiCardTab(self.status_bar_widget)
+        self.scan_tab   = ScanTab(self.status_bar_widget)
+        self.hs_tab     = HandshakeTab(self.status_bar_widget)
+        self.attack_tab = DeauthTab(self.status_bar_widget)
+        self.crack_tab  = CrackConvertTab(self.status_bar_widget)
 
-        self.tabs.addTab(self.card_tab, "⚡ Card Control")
-        self.tabs.addTab(self.scan_tab, "📡 Scanner")
-        self.tabs.addTab(self.hs_tab, "🤝 Handshake")
-        self.tabs.addTab(self.attack_tab, "💥 Deauth & DoS")
-        self.tabs.addTab(self.crack_tab, "🔓 Crack & Convert")
+        self.tabs.addTab(self.card_tab,   "⚡ Card Control")
+        self.tabs.addTab(self.scan_tab,   "📡 Scanner")
+        self.tabs.addTab(self.hs_tab,     "🤝 Handshake")
+        self.tabs.addTab(self.attack_tab, "💥 Deauth")
+        self.tabs.addTab(self.crack_tab,  "🔓 Crack & Convert")
 
         self.card_tab.mode_changed.connect(self._on_mode_changed)
         self.scan_tab.target_selected.connect(self._on_target_selected)
 
-        content_layout.addWidget(self.tabs)
+        cl.addWidget(self.tabs)
         root.addWidget(content)
 
     def _on_mode_changed(self, iface, mon_iface):
         self.scan_tab.set_monitor_iface(mon_iface)
         self.scan_tab.mon_iface_edit.setText(mon_iface)
         self.hs_tab.iface_edit.setText(mon_iface)
-        self.attack_tab.deauth_iface_edit.setText(mon_iface)
-        self.attack_tab.dos_iface_edit.setText(mon_iface)
+        self.attack_tab.iface_edit.setText(mon_iface)
 
     def _on_target_selected(self, bssid, ssid, channel):
         self.hs_tab.update_networks(self.scan_tab.get_networks())
@@ -1941,27 +2016,38 @@ class MainWindow(QMainWindow):
         self.status_bar_widget.set_target(ssid, bssid)
 
 
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 def main():
     if os.geteuid() != 0:
         print("[NetShade] Run with sudo for full functionality: sudo python3 netshade.py")
+
+    if not os.environ.get('XDG_RUNTIME_DIR'):
+        runtime_dir = f"/tmp/runtime-{os.getuid()}"
+        os.makedirs(runtime_dir, exist_ok=True)
+        os.environ['XDG_RUNTIME_DIR'] = runtime_dir
 
     app = QApplication(sys.argv)
     app.setApplicationName("NetShade")
     app.setApplicationVersion("1.0.0")
     app.setOrganizationName("Rupen Maharjan")
-
     app.setStyleSheet(STYLESHEET)
 
     pal = app.palette()
-    pal.setColor(QPalette.ColorRole.Window, QColor(PALETTE["base"]))
-    pal.setColor(QPalette.ColorRole.WindowText, QColor(PALETTE["text"]))
-    pal.setColor(QPalette.ColorRole.Base, QColor(PALETTE["mantle"]))
-    pal.setColor(QPalette.ColorRole.AlternateBase, QColor(PALETTE["crust"]))
-    pal.setColor(QPalette.ColorRole.Text, QColor(PALETTE["text"]))
-    pal.setColor(QPalette.ColorRole.Button, QColor(PALETTE["surface0"]))
-    pal.setColor(QPalette.ColorRole.ButtonText, QColor(PALETTE["text"]))
-    pal.setColor(QPalette.ColorRole.Highlight, QColor(PALETTE["mauve"]))
-    pal.setColor(QPalette.ColorRole.HighlightedText, QColor(PALETTE["crust"]))
+    color_map = {
+        QPalette.ColorRole.Window:          PALETTE["base"],
+        QPalette.ColorRole.WindowText:      PALETTE["text"],
+        QPalette.ColorRole.Base:            PALETTE["mantle"],
+        QPalette.ColorRole.AlternateBase:   PALETTE["crust"],
+        QPalette.ColorRole.Text:            PALETTE["text"],
+        QPalette.ColorRole.Button:          PALETTE["surface0"],
+        QPalette.ColorRole.ButtonText:      PALETTE["text"],
+        QPalette.ColorRole.Highlight:       PALETTE["mauve"],
+        QPalette.ColorRole.HighlightedText: PALETTE["crust"],
+    }
+    for role, color in color_map.items():
+        pal.setColor(role, QColor(color))
     app.setPalette(pal)
 
     window = MainWindow()
